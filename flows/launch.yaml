@@ -1,0 +1,16 @@
+appId: eu.siacs.conversations
+onFlowStart:
+    - runScript: scripts/checkHealth.js
+---
+
+- runScript: scripts/startSession.js
+
+- launchApp:
+    clearState: true
+
+- assertVisible: "I already have an account"
+
+- runScript: 
+    file: scripts/checkForLogs.js
+    env:
+        PATTERN: initializing database.*

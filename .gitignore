@@ -1,0 +1,3 @@
+target/
+.sidecar.pid
+sidecar.log
