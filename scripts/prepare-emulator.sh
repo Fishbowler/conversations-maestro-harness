@@ -4,8 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# TODO: research F-Droid APIs to resolve the latest Conversations APK dynamically
-CONVERSATIONS_APK_URL="https://f-droid.org/repo/eu.siacs.conversations_4217304.apk"
+# TODO: research F-Droid APIs to resolve the latest Conversations APK dynamically. v2.19.15 is 4217303 (x86_64) and 4217304 (arm64-v8a).
+HOST_ARCH="$(uname -m)"
+case "$HOST_ARCH" in
+    x86_64)        FDROID_BUILD_ID="4217303" ;;
+    aarch64|arm64) FDROID_BUILD_ID="4217304" ;;
+    *) echo "Unsupported architecture: $HOST_ARCH" >&2; exit 1 ;;
+esac
+CONVERSATIONS_APK_URL="https://f-droid.org/repo/eu.siacs.conversations_${FDROID_BUILD_ID}.apk"
 CONVERSATIONS_APK="$ROOT_DIR/conversations.apk"
 
 if [ ! -f "$CONVERSATIONS_APK" ]; then
