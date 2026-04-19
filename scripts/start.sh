@@ -3,15 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-JAR="$ROOT_DIR/target/logcat-sidecar-1.0-SNAPSHOT.jar"
+# Pin to a released version of maestro-logcat-sidecar
+SIDECAR_VERSION="${SIDECAR_VERSION:-1.0.0}"
+SIDECAR_JAR="$ROOT_DIR/maestro-logcat-sidecar-${SIDECAR_VERSION}.jar"
+SIDECAR_URL="https://github.com/Fishbowler/maestro-logcat-sidecar/releases/download/v${SIDECAR_VERSION}/maestro-logcat-sidecar-${SIDECAR_VERSION}.jar"
 PID_FILE="$ROOT_DIR/.sidecar.pid"
 LOG_FILE="$ROOT_DIR/sidecar.log"
 PORT="${PORT:-17777}"
 
-cd "$ROOT_DIR"
-mvn -q package -DskipTests
+if [ ! -f "$SIDECAR_JAR" ]; then
+    echo "Downloading maestro-logcat-sidecar v${SIDECAR_VERSION}..."
+    curl -fsSL -o "$SIDECAR_JAR" "$SIDECAR_URL"
+fi
 
-java -jar "$JAR" >"$LOG_FILE" 2>&1 &
+LOGCAT_TAGS="${LOGCAT_TAGS:-Conversations:* *:S}" java -jar "$SIDECAR_JAR" >"$LOG_FILE" 2>&1 &
 SIDECAR_PID=$!
 echo "$SIDECAR_PID" >"$PID_FILE"
 

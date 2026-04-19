@@ -36,7 +36,16 @@ onFlowStart:
 
 - assertVisible: "Publish avatar"
 - tapOn: "Skip"
-- assertVisible: "Battery optimizations enabled"
-- tapOn: "Next"
-- assertVisible: "Let app always run in background?"
-- tapOn: "Allow"
+
+- runFlow:
+    when: 
+      visible: "Battery optimizations enabled"
+    commands: 
+      - tapOn: "Next"
+      - assertVisible: "Let app always run in background?"
+      - tapOn: "Allow"
+
+- runScript: 
+    file: scripts/checkForLogs.js
+    env:
+        PATTERN: .*SASL 2.0 authorization identifier was jane@example.org
