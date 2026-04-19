@@ -2,7 +2,7 @@
 
 Maestro UI test flows for the [Conversations](https://conversations.im) XMPP client,
 asserting against Android logcat output via the
-[maestro-logcat-sidecar](https://github.com/<GITHUB_ORG>/maestro-logcat-sidecar).
+[maestro-logcat-sidecar](https://github.com/Fishbowler/maestro-logcat-sidecar).
 
 ## Prerequisites
 
@@ -19,10 +19,10 @@ asserting against Android logcat output via the
 
 ```bash
 # Before your test run
-./scripts/start.sh
+./scripts/start-sidecar-api.sh
 
 # After your test run
-./scripts/stop.sh
+./scripts/stop-sidecar-api.sh
 ```
 
 `start.sh` downloads the sidecar JAR from GitHub Releases (if not already cached),
@@ -31,12 +31,12 @@ Logs are written to `sidecar.log`.
 
 To pin a specific sidecar version:
 ```bash
-SIDECAR_VERSION=1.2.0 ./scripts/start.sh
+SIDECAR_VERSION=1.2.0 ./scripts/start-sidecar-api.sh
 ```
 
 ## API reference
 
-See the [maestro-logcat-sidecar docs](https://github.com/<GITHUB_ORG>/maestro-logcat-sidecar/blob/main/flows/README.md)
+See the [maestro-logcat-sidecar docs](https://github.com/Fishbowler/maestro-logcat-sidecar/blob/main/flows/README.md)
 for the full API reference.
 
 | Method | Path | Description |

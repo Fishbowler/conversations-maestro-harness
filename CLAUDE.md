@@ -1,13 +1,16 @@
-# Logcat Sidecar API — Claude Code Instructions
+# conversations-maestro-harness — Claude Code Instructions
 
 ## Project purpose
 
-This is a standalone Java HTTP sidecar that enables Maestro UI test flows to make assertions
-against Android logcat output. Maestro drives the Conversations XMPP client on an Android
-emulator; it calls this API to assert that expected log events have occurred.
+Maestro UI test flows for the [Conversations](https://conversations.im) XMPP client, asserting
+against Android logcat output. Maestro drives Conversations on an Android emulator; a sidecar
+HTTP server (from [maestro-logcat-sidecar](https://github.com/Fishbowler/maestro-logcat-sidecar))
+captures logcat so flow scripts can assert on expected log events.
 
-The system under test is **Openfire**, an XMPP server. This sidecar asserts only on
-**client-side** (Conversations app) logcat output — never on server logs.
+The system under test is **Openfire**, an XMPP server. Assertions are on **client-side**
+(Conversations app) logcat only — never on server logs.
+
+This repo contains no Java source. The sidecar is a pre-built JAR downloaded at runtime.
 
 ---
 
@@ -15,241 +18,133 @@ The system under test is **Openfire**, an XMPP server. This sidecar asserts only
 
 ```
 /
-├── CLAUDE.md                  ← this file
-├── pom.xml
+├── CLAUDE.md
 ├── scripts/
-│   ├── start.sh               ← build JAR and start the sidecar; poll until ready
-│   └── stop.sh                ← stop the sidecar process
-├── src/
-│   └── main/
-│       └── java/
-│           └── org/igniterealtime/logcat/
-│               ├── Main.java
-│               ├── LogcatBuffer.java
-│               └── SidecarServer.java
+│   ├── prepare-emulator.sh    ← local setup: start emulator, install Conversations
+│   ├── start-sidecar-api.sh   ← download JAR and start the sidecar; poll until ready
+│   └── stop-sidecar-api.sh    ← stop the sidecar process
 └── flows/
-    ├── checkForLogs.js        ← reusable assertion script called via runScript
-    └── (Maestro .yaml flow files live here)
+    ├── launch.yaml            ← Maestro flow: account setup and connection test
+    ├── README.md
+    └── scripts/
+        ├── checkHealth.js     ← verify sidecar is reachable
+        ├── startSession.js    ← clear logcat buffer; call before UI actions
+        └── checkForLogs.js    ← assert log output; requires PATTERN env var
 ```
 
 ---
 
-## Language and build
+## Commands
 
-- **Java 17**
-- **Maven** (produce a single fat JAR via `maven-shade-plugin`)
-- **Javalin 7** for the HTTP server (add to `pom.xml`; no other web framework)
-- **No Spring, no Quarkus, no Jakarta EE**
-- Group ID: `org.igniterealtime`; Artifact ID: `logcat-sidecar`
+```bash
+# Local setup (once per emulator session)
+./scripts/prepare-emulator.sh
+
+# Before each test run
+./scripts/start-sidecar-api.sh
+
+# Run all flows
+maestro test flows/
+
+# After each test run
+./scripts/stop-sidecar-api.sh
+```
 
 ---
 
-## Architecture
+## Local prerequisites
 
-### LogcatBuffer
-
-Starts `adb logcat` as a subprocess via `ProcessBuilder`. Reads its stdout on a background
-thread and appends lines to a fixed-capacity circular buffer (default 10,000 lines).
-
-Key behaviours:
-
-- Filter by tag on startup: `adb logcat -s Conversations:* *:S` to suppress unrelated noise.
-  The tag filter must be configurable via an environment variable `LOGCAT_TAGS` (default:
-  `Conversations:* *:S`).
-- Expose a `findMatchingLines(String regex)` method that scans the buffer at the moment of
-  the call and returns all lines matching the regex. Lines are matched in the order they
-  were received. Returns an empty list if there are no matches.
-- Expose a `clear()` method that discards all buffered lines. Called at the start of each
-  test session.
-- Thread-safe. Use `ReentrantLock` — not `synchronized` blocks.
-- If `adb` is not on PATH, fail fast at startup with a clear error message.
-
-### SidecarServer
-
-A Javalin HTTP server listening on port 17777 (configurable via `PORT` env var).
-
-Implement exactly these endpoints:
-
-#### `POST /session/start`
-
-Clears the logcat buffer and marks the start of a new test session. Returns `200 OK` with:
-
-```json
-{ "status": "started", "timestamp": "<ISO-8601>" }
-```
-
-#### `GET /assert`
-
-Query parameters:
-- `pattern` (required) — Java regex to match against buffered logcat lines
-
-Scans the buffer immediately and synchronously — no blocking, no polling. Returns all lines
-that match the pattern.
-
-On match:
-```
-HTTP 200 OK
-{ "lines": ["<first matching line>", "<second matching line>"] }
-```
-
-On no match:
-```
-HTTP 404 Not Found
-```
-No response body on 404.
-
-#### `GET /health`
-
-Returns `200 OK` immediately:
-
-```json
-{ "status": "ok" }
-```
-
-Used by `scripts/start.sh` to poll for readiness.
-
-#### Error handling
-
-- Missing `pattern` parameter → `400` with `{ "error": "pattern is required" }`
-- Invalid regex → `400` with `{ "error": "invalid regex: <message>" }`
-- All unhandled exceptions → `500` with `{ "error": "<message>" }`
+- **`adb`** on PATH — Android SDK platform-tools. Maestro uses its own `dadb` and does not provide `adb`.
+  ```bash
+  export PATH="$ANDROID_HOME/platform-tools:$PATH"
+  ```
+- **Java 17+** on PATH — required to run the sidecar JAR.
+- **Maestro CLI** — `curl -Ls "https://get.maestro.mobile.dev" | bash`
+- **Android emulator** — run `./scripts/prepare-emulator.sh` to start one and install Conversations.
 
 ---
 
-## Order of operations
+## What `prepare-emulator.sh` does
 
-Each Maestro flow follows this sequence:
+1. Downloads the Conversations APK (cached in repo root as `conversations.apk`).
+2. Starts an Android 34 emulator via `maestro start-device --platform=android --os-version=34`.
+3. Waits for the device to be ADB-accessible, fully booted (`sys.boot_completed`), and the
+   package manager service active — three separate checks, following Maestro's own e2e CI pattern.
+4. Installs Conversations (skips if already installed, to support repeated local runs).
 
-1. `POST /session/start` — clears the buffer; logcat capture begins
-2. Maestro performs UI actions (taps, typing) against the Conversations app
-3. `GET /assert` — by the time this is called, the relevant log lines will already be
-   in the buffer. Android's logging subsystem is synchronous from the app's perspective;
-   no delay between UI action completion and log line availability should be expected.
-
-`/assert` is therefore a snapshot query, not a poll. Do not implement any retry or
-wait logic inside the sidecar.
+This script is for **local use only**. CI uses `reactivecircus/android-emulator-runner` instead.
 
 ---
 
-## Shell scripts
+## What `start-sidecar-api.sh` does
 
-### `scripts/start.sh`
-
-1. Run `mvn -q package -DskipTests` to produce the fat JAR.
-2. Start the JAR in the background, redirecting stdout/stderr to `sidecar.log`.
-3. Poll `GET /health` every 500 ms for up to 15 seconds. Exit 1 if it never responds.
-4. Print `Sidecar ready on port 17777` on success.
-5. Write the sidecar PID to `.sidecar.pid`.
-
-### `scripts/stop.sh`
-
-1. Read `.sidecar.pid`.
-2. Kill the process.
-3. Remove `.sidecar.pid`.
-
-Both scripts must work on Linux. They will be called from GitHub Actions (ubuntu-latest
-cloud runner) and from a developer's local Linux machine. No macOS or Windows compatibility
-is required.
+1. Downloads the sidecar JAR from GitHub Releases if not already cached (version pinned via
+   `SIDECAR_VERSION` env var, default `1.0.0`).
+2. Starts the JAR in the background with `LOGCAT_TAGS=Conversations:* *:S`, redirecting output
+   to `sidecar.log`.
+3. Polls `GET /health` every 500 ms for up to 15 seconds; exits 1 if it never responds.
 
 ---
 
-## Maestro integration
+## Configuration
 
-Maestro flow files live in `flows/`. Maestro connects to the Android emulator via its
-bundled `dadb` library (a pure-JVM ADB client). The sidecar connects via the `adb` binary.
-Both communicate through the same ADB server on the host and do not interfere with each
-other.
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `PORT` | `17777` | HTTP port the sidecar listens on |
+| `LOGCAT_TAGS` | `Conversations:* *:S` | Tag filter passed to `adb logcat` |
+| `SIDECAR_VERSION` | `1.0.0` | Sidecar release to download |
 
-### Maestro JS runtime conventions
+---
 
-Maestro executes `runScript` files using GraalVM's JavaScript engine with Java interop
-available. Key rules that apply to **all** scripts in `flows/`:
+## Maestro JS runtime conventions
 
-- **Variable injection**: `env` values from the `runScript` block are injected as global
-  variables by name — access them directly (e.g., `PATTERN`), not via `process.env`.
-- **Sleep**: there is no `setTimeout` or Java interop — use a busy-wait: `const end = Date.now() + ms; while (Date.now() < end) {}`.
-- **HTTP**: `http.get(url)` and `http.post(url, body)` are globals; responses have `.ok`,
-  `.status`, and `.body` (string).
+Applies to all scripts in `flows/scripts/`:
+
+- **Variable injection**: `env` values are injected as globals — use `PATTERN` directly, not `process.env.PATTERN`.
+- **Sleep**: no `setTimeout` — use a busy-wait: `const end = Date.now() + ms; while (Date.now() < end) {}`.
+- **HTTP**: `http.get(url)` and `http.post(url, body)` are globals; responses have `.ok`, `.status`, `.body`.
 - **Output**: write to `output.<key>` to expose values to subsequent flow steps.
 
-### Flow scripts
+## Flow structure
 
-Three reusable scripts live in `flows/`. Call them early in every flow in this order:
+Every flow calls the helper scripts in this order:
 
-1. **`checkHealth.js`** — verifies the sidecar is reachable; retries 3 × with 500 ms delay.
-   Call this first so a misconfigured environment fails fast with a clear error.
-2. **`startSession.js`** — calls `POST /session/start` to clear the logcat buffer.
-   Sets `output.timestamp`. Call this immediately before the UI actions under test.
-3. **`checkForLogs.js`** — queries `GET /assert` with a regex. Requires `PATTERN` env var.
-   Sets `output.matchedLines`. Call this after UI actions to assert expected log output.
-
-Example flow skeleton:
+1. **`checkHealth.js`** (in `onFlowStart`) — verifies the sidecar is reachable; retries 3× with 500 ms delay.
+2. **`startSession.js`** — calls `POST /session/start` to clear the buffer. Sets `output.timestamp`.
+3. UI actions (taps, inputs, assertions).
+4. **`checkForLogs.js`** — calls `GET /assert?pattern=PATTERN`. Throws if no match. Sets `output.matchedLines`.
 
 ```yaml
-- runScript:
-    file: checkHealth.js
+appId: eu.siacs.conversations
+onFlowStart:
+    - runScript: scripts/checkHealth.js
+---
 
-- runScript:
-    file: startSession.js
+- runScript: scripts/startSession.js
 
 # … UI actions …
 
 - runScript:
-    file: checkForLogs.js
+    file: scripts/checkForLogs.js
     env:
       PATTERN: 'SMACK.*connected'
 ```
 
-The matched lines are exposed as `output.matchedLines` and are available in subsequent
-flow steps as `${checkForLogs.output.matchedLines}` for further assertion if needed.
+## Sidecar API summary
 
-The `flows/README.md` must explain:
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/session/start` | Clears the logcat buffer |
+| `GET` | `/assert?pattern=<regex>` | Returns matched lines (`200`) or `404` |
+| `GET` | `/health` | Liveness probe |
 
-- Local setup prerequisite: the `adb` binary must be on PATH (the Android SDK platform-tools
-  provide this; Maestro does not, as it uses its own `dadb` implementation internally)
-- How to start and stop the sidecar before/after a test run
-- The meaning of each API endpoint and its response codes
-- How to tune `LOGCAT_TAGS` and `PORT`
-- How to write regex patterns against Conversations log output
+See [maestro-logcat-sidecar](https://github.com/Fishbowler/maestro-logcat-sidecar) for full API docs and sidecar architecture.
 
 ---
 
-## GitHub Actions
-
-Create `.github/workflows/ci.yml`. It must:
-
-1. Check out the repository.
-2. Set up Java 17 (`actions/setup-java` with `temurin` distribution).
-3. Install Maestro CLI.
-4. Start an Android emulator (use `reactivecircus/android-emulator-runner`).
-5. Run `scripts/start.sh`.
-6. Run all Maestro flows in `flows/` via `maestro test flows/`.
-7. Run `scripts/stop.sh`.
-8. Upload `sidecar.log` as an artifact on failure.
-
-The workflow must work on `ubuntu-latest` (GitHub-hosted cloud runner). No self-hosted
-runner assumptions.
-
----
-
-## Coding standards
-
-- All public classes and methods must have Javadoc.
-- Use `java.util.logging` — no SLF4J, no Log4j.
-- No checked exceptions in public API surfaces; wrap in `RuntimeException` where needed.
-- The main class is `org.igniterealtime.logcat.Main`. It reads env vars and wires up
-  `LogcatBuffer` and `SidecarServer`.
-- Single-session only — no concurrency between simultaneous test runs is required.
-- Write one JUnit 5 unit test for `LogcatBuffer.findMatchingLines`: verify that a line
-  added after `clear()` is matched, and that a line present before `clear()` is not.
-
----
-
-## What NOT to build
+## What NOT to do
 
 - Do not assert on Openfire server logs — client side only.
 - Do not implement authentication on the HTTP API.
-- Do not build a UI or dashboard.
-- Do not support multiple simultaneous ADB devices (assume one emulator, default device).
-- Do not add any persistence layer.
-- Do not implement any blocking, polling, or retry logic in `/assert`.
+- Do not support multiple simultaneous ADB devices (one emulator, default device).
+- Do not add retry or polling logic inside `/assert` — it is a snapshot query by design.
