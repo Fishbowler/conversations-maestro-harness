@@ -39,9 +39,18 @@ jobs:
             # TODO: research F-Droid APIs to resolve the latest Conversations APK dynamically. v2.19.15 is 4217303 (x86_64) and 4217304 (arm64-v8a).
             curl -fsSL -o conversations.apk https://f-droid.org/repo/eu.siacs.conversations_4217303.apk
             adb install -r conversations.apk
+
             ./scripts/start-sidecar-api.sh
-            maestro test flows/
+            maestro test flows/ || { RC=$?; adb logcat -d > adb_logcat.log 2>&1; exit $RC; }
             ./scripts/stop-sidecar-api.sh
+
+      - name: Upload ADB logcat on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: adb-logcat
+          path: adb_logcat.log
+          retention-days: 7
 
       - name: Upload sidecar log on failure
         if: failure()
