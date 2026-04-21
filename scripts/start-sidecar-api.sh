@@ -16,7 +16,7 @@ if [ ! -f "$SIDECAR_JAR" ]; then
     curl -fsSL -o "$SIDECAR_JAR" "$SIDECAR_URL"
 fi
 
-LOGCAT_TAGS="${LOGCAT_TAGS:-Conversations:* *:S}" java -jar "$SIDECAR_JAR" >"$LOG_FILE" 2>&1 &
+LOGCAT_TAGS="${LOGCAT_TAGS:-conversations:V *:S}" java -jar "$SIDECAR_JAR" >"$LOG_FILE" 2>&1 &
 SIDECAR_PID=$!
 echo "$SIDECAR_PID" >"$PID_FILE"
 

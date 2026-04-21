@@ -41,7 +41,7 @@ jobs:
             adb install -r conversations.apk
 
             ./scripts/start-sidecar-api.sh
-            maestro test flows/ || { RC=$?; adb logcat -d > adb_logcat.log 2>&1; exit $RC; }
+            maestro test flows/ || { RC=$?; adb logcat -d conversations:V '*:S' > adb_logcat.log 2>&1; exit $RC; }
             ./scripts/stop-sidecar-api.sh
 
       - name: Upload ADB logcat on failure

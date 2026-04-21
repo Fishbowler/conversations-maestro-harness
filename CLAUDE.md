@@ -80,7 +80,7 @@ This script is for **local use only**. CI uses `reactivecircus/android-emulator-
 
 1. Downloads the sidecar JAR from GitHub Releases if not already cached (version pinned via
    `SIDECAR_VERSION` env var, default `1.0.0`).
-2. Starts the JAR in the background with `LOGCAT_TAGS=Conversations:* *:S`, redirecting output
+2. Starts the JAR in the background with `LOGCAT_TAGS=conversations:V *:S`, redirecting output
    to `sidecar.log`.
 3. Polls `GET /health` every 500 ms for up to 15 seconds; exits 1 if it never responds.
 
@@ -91,7 +91,7 @@ This script is for **local use only**. CI uses `reactivecircus/android-emulator-
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `PORT` | `17777` | HTTP port the sidecar listens on |
-| `LOGCAT_TAGS` | `Conversations:* *:S` | Tag filter passed to `adb logcat` |
+| `LOGCAT_TAGS` | `conversations:V *:S` | Tag filter passed to `adb logcat` |
 | `SIDECAR_VERSION` | `1.0.0` | Sidecar release to download |
 
 ---
