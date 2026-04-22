@@ -14,6 +14,18 @@ logcat so flow scripts can assert on expected log events.
 - **Java 17+** on PATH — required to run the sidecar JAR.
 - **Maestro CLI** — `curl -Ls "https://get.maestro.mobile.dev" | bash`
 - **Android emulator** — run `./scripts/prepare-emulator.sh` once per session to start one and install Conversations.
+- **Openfire XMPP server** — must be running on the host before tests start. The Android emulator reaches the host at `10.0.2.2`, so Openfire should listen on its default ports. Configure it with domain `example.org` and a user `jane` with password `secret` (Openfire's built-in demoboot defaults satisfy this).
+
+## Using this as a GitHub Action
+
+This repo provides a reusable composite action for inclusion in a CI pipeline that builds and starts an Openfire instance:
+
+```yaml
+- name: Test Conversations against Openfire
+  uses: Fishbowler/conversations-maestro-harness/.github/actions/run-tests@main
+```
+
+The action sets up Java 17, Maestro, and an Android emulator, then runs the full test suite. It expects Openfire to already be running on the host when invoked. On failure it uploads `adb-logcat`, `sidecar-log`, and `maestro-logs` artifacts.
 
 ## Quick start
 
